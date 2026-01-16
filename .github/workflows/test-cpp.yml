@@ -1,0 +1,42 @@
+
+name: test-cpp
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.ipynb'
+      - 'examples/**'
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.ipynb'
+      - 'examples/**'
+
+jobs:
+  test:
+    name: C++ Tests on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libeigen3-dev libssl-dev
+          wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/local/include/json.hpp
+      - name: Build C++ test
+        run: |
+          g++ -std=c++17 -I/usr/include/eigen3 -Iinclude -I/usr/local/include src/test_db.cpp -o test_db -lssl -lcrypto
+      - name: Run C++ test
+        run: |
+          ./test_db

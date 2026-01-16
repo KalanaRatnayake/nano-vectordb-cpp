@@ -1,18 +1,17 @@
 <div align="center">
   <h1>nano-VectorDB</h1>
-  <p><strong>A simple, easy-to-hack Vector Database</strong></p>
+  <p><strong>A simple, easy-to-hack Vector Database (Python & C++)</strong></p>
   <p>
     <img src="https://img.shields.io/badge/python->=3.9.11-blue">
+    <img src="https://img.shields.io/badge/c++->=17-blue">
     <a href="https://pypi.org/project/nano-vectordb/">
       <img src="https://img.shields.io/pypi/v/nano-vectordb.svg">
     </a>
-    <a href="https://codecov.io/github/gusye1234/nano-vectordb" > 
- <img src="https://codecov.io/github/gusye1234/nano-vectordb/graph/badge.svg?token=3ACScwuv4h"/> 
- </a>
+    <a href="https://codecov.io/github/KalanaRatnayake/nano-vectordb" > 
+      <img src="https://codecov.io/github/KalanaRatnayake/nano-vectordb/graph/badge.svg"/> 
+    </a>
   </p>
 </div>
-
-
 
 
 🌬️ A vector database implementation with single-dependency (`numpy`).
@@ -24,8 +23,45 @@
 🏃 Support naive [multi-tenancy](#Multi-Tenancy).
 
 
+## [New] C++ Support
 
-## Install
+### Requirements
+
+- C++17 or later
+- [Eigen](https://eigen.tuxfamily.org/) (vector math)
+- [OpenSSL](https://www.openssl.org/) (base64 encoding)
+- [nlohmann/json](https://github.com/nlohmann/json) (JSON serialization)
+
+
+### Build & Test
+
+```sh
+sudo apt-get update
+sudo apt-get install -y g++ libeigen3-dev libssl-dev
+wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/local/include/json.hpp
+make test
+```
+
+### Usage
+
+```cpp
+#include "NanoVectorDB.hpp"
+#include <vector>
+using namespace nano_vectordb;
+
+NanoVectorDB vdb(1024);
+std::vector<Data> data;
+// Fill data with your vectors
+vdb.upsert(data);
+auto results = vdb.query(data[0].vector, 10);
+vdb.save();
+```
+
+See src/test_db.cpp for full API usage and tests.
+
+## [Original] Python
+
+### Install
 
 **Install from PyPi**
 
@@ -41,9 +77,7 @@ cd nano-vectordb
 pip install -e .
 ```
 
-
-
-## Quick Start
+### Quick Start
 
 **Faking your data**:
 
@@ -116,8 +150,6 @@ vdb.store_additional_data(a=1, b=2, c=3)
 print(vdb.get_additional_data())
 ```
 
-
-
 ## Multi-Tenancy
 
 If you have multiple vectorDB to use, you can use `MultiTenantNanoVDB` to manage:
@@ -145,8 +177,6 @@ multi_tenant.save()
 # There will be only `max_capacity` NanoVectorDB in the memory.
 multi_tenant = MultiTenantNanoVDB(1024, max_capacity=1)
 ```
-
-
 
 ## Benchmark
 
