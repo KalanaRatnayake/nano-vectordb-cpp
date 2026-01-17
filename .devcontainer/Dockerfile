@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     cmake \
     libeigen3-dev \
     libssl-dev \
+    nlohmann-json3-dev \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*

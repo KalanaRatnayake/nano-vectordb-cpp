@@ -18,10 +18,18 @@ namespace nano_vectordb
 struct Data
 {
   std::string id;
-  Vector vector;
+  Eigen::VectorXf vector;
 };
 
-using ConditionLambda = std::function<bool(const Data&)>;
+/**
+ * @brief Query result structure
+ *
+ */
+struct QueryResult
+{
+  Data data;
+  float score;
+};
 
 /**
  * @brief A simple in-memory vector database supporting upsert, get, remove, and query operations.
@@ -30,14 +38,8 @@ using ConditionLambda = std::function<bool(const Data&)>;
 class NanoVectorDB
 {
 public:
-  struct QueryResult
-  {
-    Data data;
-    Float score;
-  };
-
   /**
-   * @brief Construct a new Nano Vector DB object
+   * @brief Construct a new Nano Eigen::VectorXf DB object
    *
    * @param embedding_dim Embedding dimension
    * @param metric Similarity metric to use ("cosine" supported)
@@ -82,13 +84,13 @@ public:
         }
       }
       if (matrix_.rows() != static_cast<int>(data_.size())) {
-        throw std::runtime_error("Matrix row count does not match data size");
+        throw std::runtime_error("Eigen::MatrixXf row count does not match data size");
       }
       pre_process();
     }
     else
     {
-      matrix_ = Matrix(0, embedding_dim_);
+      matrix_ = Eigen::MatrixXf(0, embedding_dim_);
     }
   }
 
@@ -108,7 +110,7 @@ public:
   /**
    * @brief Upsert data entries into the database.
    *
-   * @param datas Vector of Data entries to upsert.
+   * @param datas Eigen::VectorXf of Data entries to upsert.
    */
   void upsert(const std::vector<Data>& datas)
   {
@@ -117,7 +119,7 @@ public:
     for (const auto& data : datas)
     {
       if (data.vector.size() != embedding_dim_) {
-        throw std::runtime_error("Vector dimension mismatch in upsert: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(data.vector.size()));
+        throw std::runtime_error("Eigen::VectorXf dimension mismatch in upsert: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(data.vector.size()));
       }
       // Always use hash of vector as ID if id is empty, to match Python behavior
       std::string id = data.id.empty() ? hash_vector(data.vector) : data.id;
@@ -144,7 +146,7 @@ public:
         data_[i] = it->second;
         const auto& vec = it->second.vector;
         if (vec.size() != embedding_dim_) {
-          throw std::runtime_error("[upsert] Vector size mismatch before assignment");
+          throw std::runtime_error("[upsert] Eigen::VectorXf size mismatch before assignment");
         }
         matrix_.row(i) = Eigen::Map<const Eigen::RowVectorXf>(vec.data(), vec.size());
         updated.insert(it->first);
@@ -156,7 +158,7 @@ public:
       if (updated.count(id) == 0)
       {
         if (d.vector.size() != embedding_dim_) {
-          throw std::runtime_error("[upsert] Vector size mismatch before assignment (new row)");
+          throw std::runtime_error("[upsert] Eigen::VectorXf size mismatch before assignment (new row)");
         }
         data_.push_back(d);
         matrix_.conservativeResize(matrix_.rows() + 1, embedding_dim_);
@@ -170,7 +172,7 @@ public:
   /**
    * @brief Retrieve data entries by their IDs.
    *
-   * @param ids Vector of IDs to retrieve.
+   * @param ids Eigen::VectorXf of IDs to retrieve.
    * @return std::vector<Data> Retrieved data entries.
    */
   std::vector<Data> get(const std::vector<std::string>& ids) const
@@ -203,14 +205,14 @@ public:
       }
     }
     data_ = std::move(new_data);
-    Matrix new_matrix(keep_indices.size(), embedding_dim_);
+    Eigen::MatrixXf new_matrix(keep_indices.size(), embedding_dim_);
     for (size_t i = 0; i < keep_indices.size(); ++i)
     {
       new_matrix.row(i) = matrix_.row(keep_indices[i]);
     }
     matrix_ = std::move(new_matrix);
     if (matrix_.rows() != static_cast<int>(data_.size())) {
-      throw std::runtime_error("Matrix row count does not match data size after remove");
+      throw std::runtime_error("Eigen::MatrixXf row count does not match data size after remove");
     }
   }
 
@@ -223,9 +225,9 @@ public:
    * @param filter Optional filter function to apply on data entries.
    * @return std::vector<QueryResult>
    */
-  std::vector<QueryResult> query(const Vector& query, int top_k = 10,
-                                 std::optional<Float> better_than_threshold = std::nullopt,
-                                 ConditionLambda filter = nullptr) const
+  std::vector<QueryResult> query(const Eigen::VectorXf& query, int top_k = 10,
+                                 std::optional<float> better_than_threshold = std::nullopt,
+                                 std::function<bool(const Data&)> filter = nullptr) const
   {
     if (query.size() != embedding_dim_) {
       throw std::runtime_error("Query vector dimension mismatch: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(query.size()));
@@ -307,11 +309,11 @@ private:
    * @param filter Optional filter function to apply on data entries.
    * @return std::vector<QueryResult> Query results.
    */
-  std::vector<QueryResult> cosine_query(const Vector& query, int top_k,
-                                        std::optional<Float> better_than_threshold,
-                                        ConditionLambda filter) const
+  std::vector<QueryResult> cosine_query(const Eigen::VectorXf& query, int top_k,
+                                        std::optional<float> better_than_threshold,
+                                        std::function<bool(const Data&)> filter) const
   {
-    Vector q = normalize(query);
+    Eigen::VectorXf q = normalize(query);
     std::vector<int> indices;
     if (filter)
     {
@@ -326,10 +328,10 @@ private:
       indices.resize(data_.size());
       std::iota(indices.begin(), indices.end(), 0);
     }
-    std::vector<std::pair<int, Float>> scored;
+    std::vector<std::pair<int, float>> scored;
     for (int idx : indices)
     {
-      Float score = matrix_.row(idx).dot(q);
+      float score = matrix_.row(idx).dot(q);
       scored.emplace_back(idx, score);
     }
     std::sort(scored.begin(), scored.end(), [](auto& a, auto& b) { return a.second > b.second; });
@@ -347,7 +349,7 @@ private:
   std::string metric_;
   std::string storage_file_;
   std::vector<Data> data_;
-  Matrix matrix_;
+  Eigen::MatrixXf matrix_;
   nlohmann::json additional_data_ = nlohmann::json::object();
 };
 

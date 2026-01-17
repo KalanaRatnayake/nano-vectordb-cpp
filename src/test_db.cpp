@@ -7,11 +7,11 @@
 
 using namespace nano_vectordb;
 
-Vector random_vector(int dim)
+Eigen::VectorXf random_vector(int dim)
 {
   static std::mt19937 gen{ std::random_device{}() };
-  static std::uniform_real_distribution<Float> dist(0.0, 1.0);
-  Vector v(dim);
+  static std::uniform_real_distribution<float> dist(0.0, 1.0);
+  Eigen::VectorXf v(dim);
   for (int i = 0; i < dim; ++i)
     v[i] = dist(gen);
   return v;
@@ -30,7 +30,7 @@ void test_init()
     fakes_data.push_back({ std::to_string(i), random_vector(fake_dim) });
   }
   std::cerr << "[test_init] Created fakes_data, size=" << fakes_data.size() << std::endl;
-  Vector query_data = fakes_data[data_len / 2].vector;
+  Eigen::VectorXf query_data = fakes_data[data_len / 2].vector;
   std::cerr << "[test_init] Calling a.upsert(fakes_data)" << std::endl;
   a.upsert(fakes_data);
   std::cerr << "[test_init] Calling a.save()" << std::endl;
@@ -54,7 +54,7 @@ void test_same_upsert()
   int fake_dim = 1024;
   NanoVectorDB a(fake_dim);
   // Use the same vectors for both upserts, matching Python test
-  std::vector<Vector> fake_embeds;
+  std::vector<Eigen::VectorXf> fake_embeds;
   for (int i = 0; i < data_len; ++i)
     fake_embeds.push_back(random_vector(fake_dim));
   std::vector<Data> fakes_data;

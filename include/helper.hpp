@@ -23,24 +23,20 @@
 namespace nano_vectordb
 {
 
-using Float = float;
-using Vector = Eigen::VectorXf;
-using Matrix = Eigen::MatrixXf;
-
 /**
  * @brief Convert a matrix to a base64-encoded string
  * 
  * @param array The matrix to encode
  * @return std::string The base64-encoded string
  */
-inline std::string array_to_buffer_string(const Matrix& array)
+inline std::string array_to_buffer_string(const Eigen::MatrixXf& array)
 {
   // Allow empty matrix: encode as empty string
   if (array.size() == 0 || array.rows() == 0 || array.cols() == 0) {
     return std::string();
   }
   const char* bytes = reinterpret_cast<const char*>(array.data());
-  size_t byte_len = sizeof(Float) * array.size();
+  size_t byte_len = sizeof(float) * array.size();
   BIO *bio, *b64;
   BUF_MEM* bufferPtr;
   b64 = BIO_new(BIO_f_base64());
@@ -60,16 +56,16 @@ inline std::string array_to_buffer_string(const Matrix& array)
  * 
  * @param base64_str The base64-encoded string
  * @param embedding_dim The dimension of the embedding vectors
- * @return Matrix The decoded matrix
+ * @return Eigen::MatrixXf The decoded matrix
  */
-inline Matrix buffer_string_to_array(const std::string& base64_str, int embedding_dim)
+inline Eigen::MatrixXf buffer_string_to_array(const std::string& base64_str, int embedding_dim)
 {
   if (embedding_dim <= 0) {
     throw std::runtime_error("Embedding dimension must be positive in buffer_string_to_array");
   }
   // Allow empty base64 string meaning zero rows
   if (base64_str.empty()) {
-    return Matrix(0, embedding_dim);
+    return Eigen::MatrixXf(0, embedding_dim);
   }
   BIO *bio, *b64;
   int decodeLen = (base64_str.length() * 3) / 4;
@@ -81,15 +77,15 @@ inline Matrix buffer_string_to_array(const std::string& base64_str, int embeddin
   int len = BIO_read(bio, buffer.data(), base64_str.length());
   BIO_free_all(bio);
   if (len <= 0) {
-    return Matrix(0, embedding_dim);
+    return Eigen::MatrixXf(0, embedding_dim);
   }
-  int row_size_bytes = embedding_dim * sizeof(Float);
+  int row_size_bytes = embedding_dim * sizeof(float);
   if (len % row_size_bytes != 0) {
     throw std::runtime_error("Invalid decoded length for embedding_dim in buffer_string_to_array: len=" + std::to_string(len) + ", embedding_dim=" + std::to_string(embedding_dim));
   }
   int rows = len / row_size_bytes;
-  Matrix mat(rows, embedding_dim);
-  std::memcpy(mat.data(), buffer.data(), rows * embedding_dim * sizeof(Float));
+  Eigen::MatrixXf mat(rows, embedding_dim);
+  std::memcpy(mat.data(), buffer.data(), rows * embedding_dim * sizeof(float));
   return mat;
 }
 
@@ -127,16 +123,16 @@ inline std::optional<nlohmann::json> load_storage(const std::string& file_name, 
  * @brief Normalize each row of a matrix to unit length.
  *
  * @param m Input matrix (rows are vectors).
- * @return Matrix Row-wise normalized matrix.
+ * @return Eigen::MatrixXf Row-wise normalized matrix.
  */
-inline Matrix normalize_rows(const Matrix& m)
+inline Eigen::MatrixXf normalize_rows(const Eigen::MatrixXf& m)
 {
   if (m.size() == 0 || m.rows() == 0) {
     return m;
   }
-  Matrix out = m;
+  Eigen::MatrixXf out = m;
   for (int i = 0; i < out.rows(); ++i) {
-    Float n = out.row(i).norm();
+    float n = out.row(i).norm();
     if (n == 0) {
       throw std::runtime_error("Cannot normalize zero-norm row in matrix at row " + std::to_string(i));
     }
@@ -151,12 +147,12 @@ inline Matrix normalize_rows(const Matrix& m)
  * @param v Input vector.
  * @return std::string Hash string.
  */
-inline std::string hash_vector(const Vector& v)
+inline std::string hash_vector(const Eigen::VectorXf& v)
 {
   if (v.size() == 0) {
     throw std::runtime_error("Cannot hash empty vector");
   }
-  std::hash<Float> hasher;
+  std::hash<float> hasher;
   size_t hash = 0;
   for (int i = 0; i < v.size(); ++i)
   {
@@ -171,14 +167,14 @@ inline std::string hash_vector(const Vector& v)
  * @brief Normalize a vector to unit length.
  *
  * @param v Input vector.
- * @return Vector Normalized vector.
+ * @return Eigen::VectorXf Normalized vector.
  */
-inline Vector normalize(const Vector& v)
+inline Eigen::VectorXf normalize(const Eigen::VectorXf& v)
 {
   if (v.size() == 0) {
     throw std::runtime_error("Cannot normalize empty vector");
   }
-  Float n = v.norm();
+  float n = v.norm();
   if (n == 0) {
     throw std::runtime_error("Cannot normalize zero-norm vector");
   }
