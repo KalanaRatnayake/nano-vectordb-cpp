@@ -33,13 +33,22 @@
 - [nlohmann/json](https://github.com/nlohmann/json) (JSON serialization)
 
 
-### Build & Test
 
-```sh
+### Build & Test (CMake)
+
+```shbut i
 sudo apt-get update
-sudo apt-get install -y g++ libeigen3-dev libssl-dev
-wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/local/include/json.hpp
-make test
+sudo apt-get install -y g++ cmake libeigen3-dev libssl-dev
+
+# Build using CMake
+mkdir build
+cd build
+cmake ..
+cd ..
+cmake --build build
+
+# Run the test executable
+./build/test_db
 ```
 
 ### Usage

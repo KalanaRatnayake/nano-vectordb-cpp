@@ -2,6 +2,7 @@
 #include "NanoVectorDB.hpp"
 #include <string>
 #include <unordered_map>
+#include <random>
 #include <vector>
 #include <memory>
 #include <filesystem>
@@ -26,6 +27,15 @@ public:
                      const std::string& storage_dir = "./nano_multi_tenant_storage")
     : embedding_dim_(embedding_dim), metric_(metric), max_capacity_(max_capacity), storage_dir_(storage_dir)
   {
+    if (embedding_dim_ <= 0) {
+      throw std::runtime_error("Embedding dimension must be positive");
+    }
+    if (max_capacity_ <= 0) {
+      throw std::runtime_error("Max capacity must be positive");
+    }
+    if (storage_dir_.empty()) {
+      throw std::runtime_error("Storage directory must not be empty");
+    }
   }
 
   /**
@@ -62,6 +72,9 @@ public:
     std::string tenant_id = generate_uuid();
     auto db = std::make_shared<NanoVectorDB>(embedding_dim_, metric_,
                                              storage_dir_ + "/" + jsonfile_from_id(tenant_id));
+    if (!db) {
+      throw std::runtime_error("Failed to create NanoVectorDB for tenant");
+    }
     load_tenant_in_cache(tenant_id, db);
     return tenant_id;
   }
@@ -73,9 +86,16 @@ public:
    */
   void delete_tenant(const std::string& tenant_id)
   {
+    if (!contain_tenant(tenant_id)) {
+      throw std::runtime_error("Tenant does not exist: " + tenant_id);
+    }
     storage_.erase(tenant_id);
     cache_queue_.erase(std::remove(cache_queue_.begin(), cache_queue_.end(), tenant_id), cache_queue_.end());
-    std::filesystem::remove(storage_dir_ + "/" + jsonfile_from_id(tenant_id));
+    std::error_code ec;
+    std::filesystem::remove(storage_dir_ + "/" + jsonfile_from_id(tenant_id), ec);
+    if (ec) {
+      throw std::runtime_error("Failed to remove tenant file: " + ec.message());
+    }
   }
 
   /**
@@ -86,9 +106,21 @@ public:
    */
   std::shared_ptr<NanoVectorDB> get_tenant(const std::string& tenant_id)
   {
-    if (storage_.count(tenant_id))
+    // If present in cache, return it
+    if (storage_.count(tenant_id)) {
+      if (!storage_[tenant_id]) {
+        throw std::runtime_error("Tenant DB pointer is null: " + tenant_id);
+      }
       return storage_[tenant_id];
-    throw std::runtime_error("Tenant not found");
+    }
+    // Lazy-load from disk if file exists
+    const std::string path = storage_dir_ + "/" + jsonfile_from_id(tenant_id);
+    if (std::filesystem::exists(path)) {
+      auto db = std::make_shared<NanoVectorDB>(embedding_dim_, metric_, path);
+      load_tenant_in_cache(tenant_id, db);
+      return db;
+    }
+    throw std::runtime_error("Tenant not found: " + tenant_id);
   }
 
   /**
@@ -96,11 +128,23 @@ public:
    */
   void save()
   {
-    if (!std::filesystem::exists(storage_dir_))
-      std::filesystem::create_directories(storage_dir_);
+    std::error_code ec;
+    if (!std::filesystem::exists(storage_dir_)) {
+      std::filesystem::create_directories(storage_dir_, ec);
+      if (ec) {
+        throw std::runtime_error("Failed to create storage directory: " + ec.message());
+      }
+    }
     for (const auto& [tenant_id, db] : storage_)
     {
-      db->save();
+      if (!db) {
+        throw std::runtime_error("Tenant DB pointer is null during save: " + tenant_id);
+      }
+      try {
+        db->save();
+      } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to save tenant '" + tenant_id + "': " + e.what());
+      }
     }
   }
 
@@ -113,9 +157,30 @@ private:
    */
   void load_tenant_in_cache(const std::string& tenant_id, std::shared_ptr<NanoVectorDB> db)
   {
+    if (!db) {
+      throw std::runtime_error("Cannot cache null NanoVectorDB for tenant: " + tenant_id);
+    }
     if (storage_.size() >= (size_t)max_capacity_)
     {
-      storage_.erase(cache_queue_.front());
+      // Evict least-recently-added tenant and persist it to disk
+      const std::string evict_id = cache_queue_.front();
+      auto it = storage_.find(evict_id);
+      if (it != storage_.end() && it->second)
+      {
+        std::error_code ec;
+        if (!std::filesystem::exists(storage_dir_)) {
+          std::filesystem::create_directories(storage_dir_, ec);
+          if (ec) {
+            throw std::runtime_error("Failed to create storage directory during eviction: " + ec.message());
+          }
+        }
+        try {
+          it->second->save();
+        } catch (const std::exception& e) {
+          throw std::runtime_error("Failed to save evicted tenant '" + evict_id + "': " + e.what());
+        }
+      }
+      storage_.erase(evict_id);
       cache_queue_.erase(cache_queue_.begin());
     }
     storage_[tenant_id] = db;

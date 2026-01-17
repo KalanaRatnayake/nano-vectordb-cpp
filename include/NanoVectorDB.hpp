@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <iostream>
 #include <functional>
 #include <optional>
 
@@ -46,39 +47,44 @@ public:
                const std::string& storage_file = "nano-vectordb.json")
     : embedding_dim_(embedding_dim), metric_(metric), storage_file_(storage_file)
   {
-    // Try to load storage if file exists
+    NVDB_LOG("[NanoVectorDB::NanoVectorDB] embedding_dim=" << embedding_dim_ << ", metric=" << metric_ << ", storage_file=" << storage_file_);
     auto loaded = load_storage(storage_file_, embedding_dim_);
     if (loaded)
     {
-      // Parse loaded["data"] into data_ and loaded["matrix"] into matrix_
-      // Data is expected as array of objects with id and vector (flattened)
-      matrix_ = loaded.value()["matrix"].get<Matrix>();
-      if (loaded.value().contains("data"))
+      const auto& val = loaded.value();
+      if (!val.contains("matrix")) {
+        throw std::runtime_error("Storage file missing 'matrix' field");
+      }
+      std::string matrix_b64 = val["matrix"];
+      matrix_ = buffer_string_to_array(matrix_b64, embedding_dim_);
+      if (!val.contains("data")) {
+        throw std::runtime_error("Storage file missing 'data' field");
+      }
+      for (const auto& d : val["data"])
       {
-        for (const auto& d : loaded.value()["data"])
-        {
-          Data entry;
-          entry.id = d["id"];
-          // For simplicity, skip vector field (should be reconstructed from matrix)
-          data_.push_back(entry);
+        if (!d.contains("id")) {
+          throw std::runtime_error("Data entry missing 'id' field");
         }
+        Data entry;
+        entry.id = d["id"];
+        data_.push_back(entry);
       }
-      if (loaded.value().contains("additional_data"))
+      if (val.contains("additional_data"))
       {
-        additional_data_ = loaded.value()["additional_data"];
+        additional_data_ = val["additional_data"];
       }
-      if (loaded.value().contains("embedding_dim"))
+      if (val.contains("embedding_dim"))
       {
-        int loaded_dim = loaded.value()["embedding_dim"];
+        int loaded_dim = val["embedding_dim"];
         if (loaded_dim != embedding_dim_)
         {
-          std::cerr << "Embedding dim mismatch, expected: " << embedding_dim_
-                    << ", but loaded: " << loaded_dim << std::endl;
-          throw std::runtime_error("Embedding dim mismatch");
+          throw std::runtime_error("Embedding dim mismatch: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(loaded_dim));
         }
       }
+      if (matrix_.rows() != static_cast<int>(data_.size())) {
+        throw std::runtime_error("Matrix row count does not match data size");
+      }
       pre_process();
-      std::cout << "Init NanoVectorDB with " << data_.size() << " data" << std::endl;
     }
     else
     {
@@ -91,10 +97,11 @@ public:
    */
   void pre_process()
   {
+    NVDB_LOG("[NanoVectorDB::pre_process] matrix shape: (" << matrix_.rows() << ", " << matrix_.cols() << ")");
     if (metric_ == "cosine")
     {
       if (matrix_.rows() > 0)
-        matrix_ = normalize(matrix_);
+        matrix_ = normalize_rows(matrix_);
     }
   }
 
@@ -105,9 +112,13 @@ public:
    */
   void upsert(const std::vector<Data>& datas)
   {
+    NVDB_LOG("[NanoVectorDB::upsert] datas.size()=" << datas.size());
     std::unordered_map<std::string, Data> index_datas;
     for (const auto& data : datas)
     {
+      if (data.vector.size() != embedding_dim_) {
+        throw std::runtime_error("Vector dimension mismatch in upsert: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(data.vector.size()));
+      }
       std::string id = data.id.empty() ? hash_vector(data.vector) : data.id;
       index_datas[id] = data;
     }
@@ -119,25 +130,38 @@ public:
       }
     }
     std::unordered_set<std::string> updated;
+    NVDB_LOG("[NanoVectorDB::upsert] data_.size() before update=" << data_.size());
+    int updated_count = 0;
+    int inserted_count = 0;
     for (size_t i = 0; i < data_.size(); ++i)
     {
       auto it = index_datas.find(data_[i].id);
       if (it != index_datas.end())
       {
         data_[i] = it->second;
-        matrix_.row(i) = it->second.vector;
+        const auto& vec = it->second.vector;
+        if (vec.size() != embedding_dim_) {
+          throw std::runtime_error("[upsert] Vector size mismatch before assignment");
+        }
+        matrix_.row(i) = Eigen::Map<const Eigen::RowVectorXf>(vec.data(), vec.size());
         updated.insert(it->first);
+        ++updated_count;
       }
     }
     for (const auto& [id, d] : index_datas)
     {
       if (updated.count(id) == 0)
       {
+        if (d.vector.size() != embedding_dim_) {
+          throw std::runtime_error("[upsert] Vector size mismatch before assignment (new row)");
+        }
         data_.push_back(d);
         matrix_.conservativeResize(matrix_.rows() + 1, embedding_dim_);
-        matrix_.row(matrix_.rows() - 1) = d.vector;
+        matrix_.row(matrix_.rows() - 1) = Eigen::Map<const Eigen::RowVectorXf>(d.vector.data(), d.vector.size());
+        ++inserted_count;
       }
     }
+    NVDB_LOG("[NanoVectorDB::upsert] summary: updated=" << updated_count << ", inserted=" << inserted_count);
   }
 
   /**
@@ -182,6 +206,9 @@ public:
       new_matrix.row(i) = matrix_.row(keep_indices[i]);
     }
     matrix_ = std::move(new_matrix);
+    if (matrix_.rows() != static_cast<int>(data_.size())) {
+      throw std::runtime_error("Matrix row count does not match data size after remove");
+    }
   }
 
   /**
@@ -197,6 +224,9 @@ public:
                                  std::optional<Float> better_than_threshold = std::nullopt,
                                  ConditionLambda filter = nullptr) const
   {
+    if (query.size() != embedding_dim_) {
+      throw std::runtime_error("Query vector dimension mismatch: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(query.size()));
+    }
     if (metric_ == "cosine")
     {
       return cosine_query(query, top_k, better_than_threshold, filter);
@@ -238,6 +268,9 @@ public:
       storage["additional_data"] = additional_data_;
     }
     std::ofstream f(storage_file_);
+    if (!f.is_open()) {
+      throw std::runtime_error("Failed to open storage file for saving: " + storage_file_);
+    }
     f << storage.dump();
   }
 
