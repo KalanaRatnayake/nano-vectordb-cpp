@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>nano-VectorDB-cpp</h1>
+  <h1>Nano-VectorDB-cpp</h1>
   <p><strong>A simple, easy-to-hack Vector Database (C++)</strong></p>
   <p>
     <img src="https://img.shields.io/badge/c++->=17-blue">
@@ -9,9 +9,26 @@
   </p>
 </div>
 
+# Overview
 
-This repository now contains only the C++ implementation. The upstream with Python-CPP mix is tracked on a separate branch `reference-python`.
+Nano-VectorDB-CPP is a minimal C++ vector database ported from [gusye1234/nano-vectordb](https://github.com/gusye1234/nano-vectordb) focusing on:
+- In-memory storage of fixed-length float vectors
+- Simple upsert/query APIs
+- Optional persistence (save/load)
+- Simplified Stratergies for Stoarage, Serialization and Metrics
 
+Core concepts:
+- Data: the record containing an id, vector, and optional metadata.
+- NanoVectorDB: manages storage, indexing/scan, and persistence.
+- Similarity: queries return nearest neighbors by a distance metric (e.g., cosine or L2).
+
+Typical flow:
+1. Construct NanoVectorDB with a fixed dimension.
+2. Upsert a batch of Data records.
+3. Query with a vector and k to get top matches.
+4. Save to disk; later load to restore state.
+
+> **Note:** This repository now contains only the C++ implementation. The upstream with Python-CPP mix is tracked on a separate branch `reference-python`.
 
 ## Requirements
 
@@ -65,6 +82,8 @@ See src/test_db.cpp for full API usage and tests.
 ## Documentation
 
 Class explanations are in the docs folder:
-- [Architecture and data flow](./docs/overview.md)
-- [Database class and API](./docs/NanoVectorDB.md)
+- [Database class, API and enum selection](./docs/NanoVectorDB.md)
 - [Data record structure and serialization](./docs/Data.md)
+- [Metrics: L2 and Cosine](./docs/metric.md)
+- [Serializers: JSON and Base64](./docs/serializer.md)
+- [Storage backends: File and MMap](./docs/storage.md)
