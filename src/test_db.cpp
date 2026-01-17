@@ -53,14 +53,19 @@ void test_same_upsert()
   int data_len = 1000;
   int fake_dim = 1024;
   NanoVectorDB a(fake_dim);
+  // Use the same vectors for both upserts, matching Python test
+  std::vector<Vector> fake_embeds;
+  for (int i = 0; i < data_len; ++i)
+    fake_embeds.push_back(random_vector(fake_dim));
   std::vector<Data> fakes_data;
   for (int i = 0; i < data_len; ++i)
-    fakes_data.push_back({ "", random_vector(fake_dim) });
+    fakes_data.push_back({ "", fake_embeds[i] });
   a.upsert(fakes_data);
   std::vector<Data> fakes_data2;
   for (int i = 0; i < data_len; ++i)
-    fakes_data2.push_back({ "", random_vector(fake_dim) });
+    fakes_data2.push_back({ "", fake_embeds[i] });
   a.upsert(fakes_data2);
+  assert(a.size() == data_len);
   std::cerr << "[test_same_upsert] END" << std::endl;
 }
 
@@ -74,6 +79,7 @@ void test_get()
   a.upsert(fakes_data);
   auto r = a.get({ "0", "1", "2" });
   assert(r.size() == 3);
+  // Parity: Python checks content field, C++ can add content to Data struct if needed
   std::cerr << "[test_get] END" << std::endl;
 }
 
@@ -105,6 +111,7 @@ void test_cond_filter()
   auto query_data = fakes_data[data_len / 2].vector;
   auto results = a.query(query_data, 10, 0.01);
   assert(results[0].data.id == std::to_string(data_len / 2));
+  assert(a.size() == data_len);
   auto cond_filter = [](const Data& x) { return x.id == "1"; };
   auto filtered = a.query(query_data, 10, std::nullopt, cond_filter);
   assert(filtered[0].data.id == "1");

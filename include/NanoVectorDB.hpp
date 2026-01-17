@@ -119,8 +119,11 @@ public:
       if (data.vector.size() != embedding_dim_) {
         throw std::runtime_error("Vector dimension mismatch in upsert: expected " + std::to_string(embedding_dim_) + ", got " + std::to_string(data.vector.size()));
       }
+      // Always use hash of vector as ID if id is empty, to match Python behavior
       std::string id = data.id.empty() ? hash_vector(data.vector) : data.id;
-      index_datas[id] = data;
+      Data entry = data;
+      entry.id = id;
+      index_datas[id] = entry;
     }
     if (metric_ == "cosine")
     {
