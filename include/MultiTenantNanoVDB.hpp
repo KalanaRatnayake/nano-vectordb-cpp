@@ -2,8 +2,6 @@
 #include "NanoVectorDB.hpp"
 #include "metric/base.hpp"
 #include "metric/factory.hpp"
-#include "serializer/base.hpp"
-#include "serializer/factory.hpp"
 #include "storage/base.hpp"
 #include "storage/factory.hpp"
 #include <string>
@@ -45,6 +43,8 @@ public:
     {
       throw std::runtime_error("Storage directory must not be empty");
     }
+    // Default storage backend for new tenants: SQLite (row-wise)
+    default_storage_ = ::nano_vectordb::make(::nano_vectordb::storage::SQLite);
   }
 
   /**
@@ -54,15 +54,6 @@ public:
   void set_default_metric(::nano_vectordb::metric type)
   {
     default_metric_ = ::nano_vectordb::make(type);
-  }
-
-  /**
-   * @brief Configure default strategies used for new tenants
-   * @param serializer Default serializer strategy. See enum in serializer/base.hpp
-   */
-  void set_default_serializer(::nano_vectordb::serializer type)
-  {
-    default_serializer_ = ::nano_vectordb::make(type);
   }
 
   /**
@@ -111,8 +102,6 @@ public:
     // Apply default strategies if provided
     if (default_metric_)
       db->initialize_metric(default_metric_);
-    if (default_serializer_)
-      db->initialize_serializer(default_serializer_);
     if (default_storage_)
       db->initialize_storage(default_storage_);
     if (!db)
@@ -272,7 +261,7 @@ private:
 
   // Default strategies
   std::shared_ptr<IMetric> default_metric_{};
-  std::shared_ptr<ISerializer> default_serializer_{};
+  // Serializer support removed; JSON persistence handled internally.
   std::shared_ptr<IStorage> default_storage_{};
 };
 

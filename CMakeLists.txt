@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Eigen3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 # Add include directories
 include_directories(
@@ -29,4 +30,5 @@ target_link_libraries(test_db
   ssl 
   crypto 
   Eigen3::Eigen
+  SQLite::SQLite3
 )

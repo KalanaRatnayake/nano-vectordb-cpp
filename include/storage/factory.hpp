@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 #include "file.hpp"
-#include "mmap.hpp"
+#include "sqlite.hpp"
 
 namespace nano_vectordb
 {
@@ -15,7 +15,7 @@ namespace nano_vectordb
 enum class storage
 {
   File,
-  MMap
+  SQLite
 };
 
 /**
@@ -30,8 +30,8 @@ inline std::shared_ptr<::nano_vectordb::IStorage> make(storage t)
   {
     case storage::File:
       return std::make_shared<struct ::nano_vectordb::FileStorage>();
-    case storage::MMap:
-      return std::make_shared<struct ::nano_vectordb::MMapStorage>();
+    case storage::SQLite:
+      return std::make_shared<struct ::nano_vectordb::SQLiteStorage>();
   }
   return nullptr;
 }

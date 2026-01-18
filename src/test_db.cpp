@@ -1,3 +1,6 @@
+// Test suite for NanoVectorDB demonstrating usage with both File and SQLite storage backends.
+// Each test focuses on a specific capability (init, upsert, get, delete, filtering, additional data),
+// followed by comprehensive storage-specific tests at the end to exercise save/load behavior.
 #include "NanoVectorDB.hpp"
 #include "MultiTenantNanoVDB.hpp"
 #include <iostream>
@@ -7,6 +10,7 @@
 
 using namespace nano_vectordb;
 
+// Generate a random vector with uniform values in [0,1]
 Eigen::VectorXf random_vector(int dim)
 {
   static std::mt19937 gen{ std::random_device{}() };
@@ -17,6 +21,7 @@ Eigen::VectorXf random_vector(int dim)
   return v;
 }
 
+// Basic initialization, upsert, save, reload, and query using default File storage.
 void test_init()
 {
   std::cerr << "[test_init] START" << std::endl;
@@ -49,6 +54,7 @@ void test_init()
   std::cerr << "[test_init] END" << std::endl;
 }
 
+// Upserting the same records twice should not duplicate entries; count remains stable.
 void test_same_upsert()
 {
   std::cerr << "[test_same_upsert] START" << std::endl;
@@ -71,6 +77,7 @@ void test_same_upsert()
   std::cerr << "[test_same_upsert] END" << std::endl;
 }
 
+// Retrieving a subset of IDs should return the exact number requested when present.
 void test_get()
 {
   std::cerr << "[test_get] START" << std::endl;
@@ -86,6 +93,7 @@ void test_get()
   std::cerr << "[test_get] END" << std::endl;
 }
 
+// Removing entries by ID should shrink the dataset and keep matrix/data aligned.
 void test_delete()
 {
   std::cerr << "[test_delete] START" << std::endl;
@@ -102,6 +110,7 @@ void test_delete()
   std::cerr << "[test_delete] END" << std::endl;
 }
 
+// Query with a filter lambda should restrict results to matching entries.
 void test_cond_filter()
 {
   std::cerr << "[test_cond_filter] START" << std::endl;
@@ -123,6 +132,7 @@ void test_cond_filter()
   std::cerr << "[test_cond_filter] END" << std::endl;
 }
 
+// Additional user-provided JSON should persist through save/load operations.
 void test_additional_data()
 {
   std::cerr << "[test_additional_data] START" << std::endl;
@@ -139,6 +149,7 @@ void test_additional_data()
   std::cerr << "[test_additional_data] END" << std::endl;
 }
 
+// Multi-tenant manager basic lifecycle: create/get/save/reload/delete tenants and verify defaults.
 void test_multi_tenant()
 {
   std::cerr << "[test_multi_tenant] START" << std::endl;
@@ -153,7 +164,6 @@ void test_multi_tenant()
   MultiTenantNanoVDB multi_tenant(1024);
   // Configure enum-based defaults for tenants
   multi_tenant.set_default_metric(nano_vectordb::metric::Cosine);
-  multi_tenant.set_default_serializer(nano_vectordb::serializer::JSON);
   multi_tenant.set_default_storage(nano_vectordb::storage::File);
   std::string tenant_id = multi_tenant.create_tenant();
   auto tenant = multi_tenant.get_tenant(tenant_id);
@@ -188,6 +198,84 @@ void test_multi_tenant()
   std::cerr << "[test_multi_tenant] END" << std::endl;
 }
 
+// Comprehensive File storage test: save/load vectors and additional data, then query and delete.
+void test_storage_file_backend()
+{
+  std::cerr << "[test_storage_file_backend] START" << std::endl;
+  int dim = 64;
+  std::string path = "nvdb_file_test.json";
+
+  // Create DB with File storage strategy via constructor
+  auto storage_file = nano_vectordb::make(nano_vectordb::storage::File);
+  NanoVectorDB db(dim, "cosine", path, nullptr, storage_file);
+
+  // Prepare and insert 20 records
+  std::vector<Data> recs;
+  for (int i = 0; i < 20; ++i)
+    recs.push_back({ std::to_string(i), random_vector(dim) });
+  db.upsert(recs);
+
+  // Persist additional data and save
+  nlohmann::json add = { {"owner", "test"}, {"count", (int)recs.size()} };
+  db.store_additional_data(add);
+  db.save();
+
+  // Reload and validate
+  NanoVectorDB db2(dim, "cosine", path, nullptr, storage_file);
+  auto g = db2.get({ "0", "10", "19" });
+  assert(g.size() == 3);
+  assert(db2.get_additional_data() == add);
+
+  // Query and delete a couple of entries
+  auto q = db2.query(recs[5].vector, 5);
+  assert(!q.empty());
+  db2.remove({ "10", "19" });
+  assert(db2.get({ "10", "19" }).empty());
+
+  // Cleanup
+  std::filesystem::remove(path);
+  std::cerr << "[test_storage_file_backend] END" << std::endl;
+}
+
+// Comprehensive SQLite storage test: row-wise persistence, additional data roundtrip, query and delete.
+void test_storage_sqlite_backend()
+{
+  std::cerr << "[test_storage_sqlite_backend] START" << std::endl;
+  int dim = 64;
+  std::string path = "nvdb_sqlite_test.sqlite";
+
+  // Create DB with SQLite (rows) storage strategy via constructor
+  auto storage_rows = nano_vectordb::make(nano_vectordb::storage::SQLite);
+  NanoVectorDB db(dim, "cosine", path, nullptr, storage_rows);
+
+  // Prepare and insert 20 records
+  std::vector<Data> recs;
+  for (int i = 0; i < 20; ++i)
+    recs.push_back({ std::to_string(i), random_vector(dim) });
+  db.upsert(recs);
+
+  // Persist additional data and save
+  nlohmann::json add = { {"owner", "test"}, {"count", (int)recs.size()} };
+  db.store_additional_data(add);
+  db.save();
+
+  // Reload and validate
+  NanoVectorDB db2(dim, "cosine", path, nullptr, storage_rows);
+  auto g = db2.get({ "0", "10", "19" });
+  assert(g.size() == 3);
+  assert(db2.get_additional_data() == add);
+
+  // Query and delete a couple of entries
+  auto q = db2.query(recs[5].vector, 5);
+  assert(!q.empty());
+  db2.remove({ "10", "19" });
+  assert(db2.get({ "10", "19" }).empty());
+
+  // Cleanup
+  std::filesystem::remove(path);
+  std::cerr << "[test_storage_sqlite_backend] END" << std::endl;
+}
+
 int main()
 {
   std::cerr << "[main] START" << std::endl;
@@ -200,6 +288,9 @@ int main()
     test_cond_filter();
     test_additional_data();
     test_multi_tenant();
+    // Full backend coverage: File and SQLite
+    test_storage_file_backend();
+    test_storage_sqlite_backend();
     std::cout << "All tests passed!" << std::endl;
     std::cerr << "[main] END SUCCESS" << std::endl;
     return 0;

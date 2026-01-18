@@ -3,8 +3,6 @@
 #include "structs.hpp"
 #include "metric/base.hpp"
 #include "metric/factory.hpp"
-#include "serializer/base.hpp"
-#include "serializer/factory.hpp"
 #include "storage/base.hpp"
 #include "storage/factory.hpp"
 #include <string>
@@ -46,16 +44,31 @@ public:
     std::vector<Data> loaded_records;
     if (storage_strategy_)
     {
-      try {
-        auto bytes = storage_strategy_->read(storage_file_);
-        if (!bytes.empty()) {
-          if (serializer_strategy_) {
-            loaded_records = serializer_strategy_->fromBytes(bytes);
+      try
+      {
+        // Prefer row-wise storage if available
+        if (auto rs = std::dynamic_pointer_cast<IStorageRecords>(storage_strategy_))
+        {
+          auto lr = rs->read_records(storage_file_);
+          if (!lr.records.empty() || lr.embedding_dim > 0)
+          {
+            loaded_records = std::move(lr.records);
+            loaded = nlohmann::json{ {"embedding_dim", lr.embedding_dim}, {"matrix", ""}, {"data", nlohmann::json::array()} };
+            additional_data_ = lr.additional;
           }
-          nlohmann::json j = nlohmann::json::parse(bytes.begin(), bytes.end());
-          loaded = j;
         }
-      } catch (...) {
+        else
+        {
+          auto bytes = storage_strategy_->read(storage_file_);
+          if (!bytes.empty())
+          {
+            nlohmann::json j = nlohmann::json::parse(bytes.begin(), bytes.end());
+            loaded = j;
+          }
+        }
+      }
+      catch (...)
+      {
         loaded = load_storage(storage_file_, embedding_dim_);
       }
     }
@@ -75,11 +88,14 @@ public:
         // Rebuild from serializer-decoded records
         data_ = loaded_records;
         matrix_.resize((int)data_.size(), embedding_dim_);
-        for (size_t i = 0; i < data_.size(); ++i) {
-          if (data_[i].vector.size() != embedding_dim_) {
+        for (size_t i = 0; i < data_.size(); ++i)
+        {
+          if (data_[i].vector.size() != embedding_dim_)
+          {
             throw std::runtime_error("Loaded record dim mismatch");
           }
-          matrix_.row((int)i) = Eigen::Map<const Eigen::RowVectorXf>(data_[i].vector.data(), data_[i].vector.size());
+          matrix_.row((int)i) =
+              Eigen::Map<const Eigen::RowVectorXf>(data_[i].vector.data(), data_[i].vector.size());
         }
       }
       else
@@ -90,8 +106,10 @@ public:
         {
           throw std::runtime_error("Storage file missing 'data' field");
         }
-        for (const auto& d : val["data"]) {
-          if (!d.contains("id")) {
+        for (const auto& d : val["data"])
+        {
+          if (!d.contains("id"))
+          {
             throw std::runtime_error("Data entry missing 'id' field");
           }
           Data entry;
@@ -133,17 +151,15 @@ public:
    * @param metric Similarity metric to use ("cosine" supported)
    * @param storage_file Storage file path
    * @param metric_strategy Metric strategy
-   * @param serializer_strategy Serializer strategy
    * @param storage_strategy Storage strategy
    */
   NanoVectorDB(int embedding_dim, const std::string& metric, const std::string& storage_file,
-               std::shared_ptr<IMetric> metric_strategy, std::shared_ptr<ISerializer> serializer_strategy,
+               std::shared_ptr<IMetric> metric_strategy,
                std::shared_ptr<IStorage> storage_strategy)
     : embedding_dim_(embedding_dim)
     , metric_(metric)
     , storage_file_(storage_file)
     , metric_strategy_(std::move(metric_strategy))
-    , serializer_strategy_(std::move(serializer_strategy))
     , storage_strategy_(std::move(storage_strategy))
   {
     NVDB_LOG("[NanoVectorDB::NanoVectorDB] embedding_dim=" << embedding_dim_ << ", metric=" << metric_
@@ -153,16 +169,30 @@ public:
     std::vector<Data> loaded_records;
     if (storage_strategy_)
     {
-      try {
-        auto bytes = storage_strategy_->read(storage_file_);
-        if (!bytes.empty()) {
-          if (serializer_strategy_) {
-            loaded_records = serializer_strategy_->fromBytes(bytes);
+      try
+      {
+        if (auto rs = std::dynamic_pointer_cast<IStorageRecords>(storage_strategy_))
+        {
+          auto lr = rs->read_records(storage_file_);
+          if (!lr.records.empty() || lr.embedding_dim > 0)
+          {
+            loaded_records = std::move(lr.records);
+            loaded = nlohmann::json{ {"embedding_dim", lr.embedding_dim}, {"matrix", ""}, {"data", nlohmann::json::array()} };
+            additional_data_ = lr.additional;
           }
-          nlohmann::json j = nlohmann::json::parse(bytes.begin(), bytes.end());
-          loaded = j;
         }
-      } catch (...) {
+        else
+        {
+          auto bytes = storage_strategy_->read(storage_file_);
+          if (!bytes.empty())
+          {
+            nlohmann::json j = nlohmann::json::parse(bytes.begin(), bytes.end());
+            loaded = j;
+          }
+        }
+      }
+      catch (...)
+      {
         loaded = load_storage(storage_file_, embedding_dim_);
       }
     }
@@ -170,7 +200,6 @@ public:
     {
       loaded = load_storage(storage_file_, embedding_dim_);
     }
-
     if (loaded)
     {
       const auto& val = loaded.value();
@@ -183,11 +212,14 @@ public:
         // Rebuild from serializer-decoded records
         data_ = loaded_records;
         matrix_.resize((int)data_.size(), embedding_dim_);
-        for (size_t i = 0; i < data_.size(); ++i) {
-          if (data_[i].vector.size() != embedding_dim_) {
+        for (size_t i = 0; i < data_.size(); ++i)
+        {
+          if (data_[i].vector.size() != embedding_dim_)
+          {
             throw std::runtime_error("Loaded record dim mismatch");
           }
-          matrix_.row((int)i) = Eigen::Map<const Eigen::RowVectorXf>(data_[i].vector.data(), data_[i].vector.size());
+          matrix_.row((int)i) =
+              Eigen::Map<const Eigen::RowVectorXf>(data_[i].vector.data(), data_[i].vector.size());
         }
       }
       else
@@ -198,8 +230,10 @@ public:
         {
           throw std::runtime_error("Storage file missing 'data' field");
         }
-        for (const auto& d : val["data"]) {
-          if (!d.contains("id")) {
+        for (const auto& d : val["data"])
+        {
+          if (!d.contains("id"))
+          {
             throw std::runtime_error("Data entry missing 'id' field");
           }
           Data entry;
@@ -441,36 +475,30 @@ public:
    */
   void save() const
   {
+    if (storage_strategy_) {
+      if (auto rs = std::dynamic_pointer_cast<IStorageRecords>(storage_strategy_))
+      {
+        rs->write_records(storage_file_, data_, embedding_dim_, additional_data_);
+        return;
+      }
+    }
     nlohmann::json storage;
-    // If serializer is provided, let it produce matrix/data; then we merge additional_data
     std::string dumped;
-    if (serializer_strategy_)
+    storage["embedding_dim"] = embedding_dim_;
+    storage["matrix"] = array_to_buffer_string(matrix_);
+    std::vector<nlohmann::json> data_json;
+    for (const auto& d : data_)
     {
-      auto bytes = serializer_strategy_->toBytes(data_);
-      dumped.assign(bytes.begin(), bytes.end());
-      nlohmann::json j = nlohmann::json::parse(dumped.begin(), dumped.end());
-      // Ensure embedding_dim is always present and correct, even for empty datasets
-      j["embedding_dim"] = embedding_dim_;
-      if (!additional_data_.is_null())
-        j["additional_data"] = additional_data_;
-      dumped = j.dump();
+      nlohmann::json entry;
+      entry["id"] = d.id;
+      data_json.push_back(entry);
     }
-    else
+    storage["data"] = data_json;
+    if (!additional_data_.is_null())
     {
-      storage["embedding_dim"] = embedding_dim_;
-      storage["matrix"] = array_to_buffer_string(matrix_);
-      std::vector<nlohmann::json> data_json;
-      for (const auto& d : data_) {
-        nlohmann::json entry;
-        entry["id"] = d.id;
-        data_json.push_back(entry);
-      }
-      storage["data"] = data_json;
-      if (!additional_data_.is_null()) {
-        storage["additional_data"] = additional_data_;
-      }
-      dumped = storage.dump();
+      storage["additional_data"] = additional_data_;
     }
+    dumped = storage.dump();
     if (storage_strategy_)
     {
       std::vector<uint8_t> bytes(dumped.begin(), dumped.end());
@@ -514,11 +542,16 @@ public:
   void initialize_metric(::nano_vectordb::metric type)
   {
     metric_strategy_ = ::nano_vectordb::make(type);
-    
+
     // Keep legacy string in sync for preprocessing
-    switch (type) {
-      case ::nano_vectordb::metric::Cosine: metric_ = "cosine"; break;
-      case ::nano_vectordb::metric::L2: metric_ = "l2"; break;
+    switch (type)
+    {
+      case ::nano_vectordb::metric::Cosine:
+        metric_ = "cosine";
+        break;
+      case ::nano_vectordb::metric::L2:
+        metric_ = "l2";
+        break;
     }
     pre_process();
   }
@@ -538,16 +571,7 @@ public:
    * @brief Initialize serializer strategy
    * @param serializer_strategy Serializer strategy. See enum in serializer/base.hpp
    */
-  void initialize_serializer(::nano_vectordb::serializer type)
-  {
-    serializer_strategy_ = ::nano_vectordb::make(type);
-  }
-
-  // Overload: initialize serializer with a strategy instance
-  void initialize_serializer(const std::shared_ptr<ISerializer>& strategy)
-  {
-    serializer_strategy_ = strategy;
-  }
+  // Serializer support removed; JSON persistence handled internally.
   /**
    * @brief Initialize storage strategy
    * @param storage_strategy Storage strategy. See enum in storage/base.hpp
@@ -619,7 +643,7 @@ private:
 
   // Strategy pointers (optional)
   std::shared_ptr<IMetric> metric_strategy_{};
-  std::shared_ptr<ISerializer> serializer_strategy_{};
+  // Serializer removed
   std::shared_ptr<IStorage> storage_strategy_{};
 };
 
