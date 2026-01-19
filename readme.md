@@ -1,17 +1,7 @@
-<div align="center">
-  <h1>Nano-VectorDB-cpp</h1>
-  <p><strong>A simple, easy-to-hack Vector Database (C++)</strong></p>
-  <p>
-    <img src="https://img.shields.io/badge/c++->=17-blue">
-    <a href="https://codecov.io/github/KalanaRatnayake/nano-vectordb" > 
-      <img src="https://codecov.io/github/KalanaRatnayake/nano-vectordb/graph/badge.svg"/> 
-    </a>
-  </p>
-</div>
-
-# Overview
+# Nano-VectorDB-cpp
 
 Nano-VectorDB-CPP is a minimal C++ vector database ported from [gusye1234/nano-vectordb](https://github.com/gusye1234/nano-vectordb) focusing on:
+
 - In-memory storage of fixed-length float vectors
 - Simple upsert/query APIs
 - Optional persistence (save/load)
@@ -28,7 +18,7 @@ Typical flow:
 3. Query with a vector and k to get top matches.
 4. Save to disk; later load to restore state.
 
-> **Note:** This repository now contains only the C++ implementation. The upstream with Python-CPP mix is tracked on a separate branch `reference-python`.
+> **Note:** This main branch now contains only the C++ implementation. The upstream with Python-CPP mix is tracked on a separate branch `reference-python`.
 
 ## Requirements
 
@@ -36,8 +26,6 @@ Typical flow:
 - [Eigen](https://eigen.tuxfamily.org/) (vector math)
 - [OpenSSL](https://www.openssl.org/) (base64 encoding)
 - [nlohmann/json](https://github.com/nlohmann/json) (JSON serialization)
-
-
 
 ### Build & Test (CMake)
 
